@@ -8,6 +8,7 @@ on:
 
 jobs:
   trigger-sync-lockfiles:
+    if: github.repository == 'eclipse-zenoh/zenoh'
     name: Trigger sync lockfiles workflow
     uses: eclipse-zenoh/ci/.github/workflows/sync-lockfiles.yml@main
     permissions:

@@ -63,12 +63,12 @@ impl InterceptorFactoryTrait for LinkTraceInterceptorFactory {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
         let zid = transport
             .get_zid()
             .map(|z| z.to_string())
             .unwrap_or_default();
-        match self.conf.flow {
+        Ok(match self.conf.flow {
             InterceptorFlow::Egress => (
                 None,
                 Some(Box::new(LinkTraceInterceptor { zid: zid.clone() })),
@@ -77,7 +77,7 @@ impl InterceptorFactoryTrait for LinkTraceInterceptorFactory {
                 Some(Box::new(LinkTraceInterceptor { zid: zid.clone() })),
                 None,
             ),
-        }
+        })
     }
 
     fn new_transport_multicast(

@@ -46,6 +46,7 @@ type Password = Vec<u8>;
 pub struct AuthUsrPwd {
     lookup: HashMap<User, Password>,
     credentials: Option<(User, Password)>,
+    dynamic: bool,
 }
 
 impl AuthUsrPwd {
@@ -53,7 +54,12 @@ impl AuthUsrPwd {
         Self {
             lookup: HashMap::new(),
             credentials,
+            dynamic: false,
         }
+    }
+
+    pub fn set_dynamic(&mut self, dynamic: bool) {
+        self.dynamic = dynamic;
     }
 
     pub async fn add_user(&mut self, user: User, password: Password) -> ZResult<()> {
@@ -66,8 +72,9 @@ impl AuthUsrPwd {
         Ok(())
     }
 
-    pub async fn from_config(config: &UsrPwdConf) -> ZResult<Option<Self>> {
+    pub async fn from_config(config: &UsrPwdConf, dynamic: bool) -> ZResult<Option<Self>> {
         const S: &str = "UsrPwd extension - From config.";
+        let dynamic = dynamic || config.dynamic.unwrap_or(false);
 
         let mut lookup: HashMap<User, Password> = HashMap::new();
         if let Some(dict) = config.dictionary_file() {
@@ -110,11 +117,18 @@ impl AuthUsrPwd {
             }
         }
 
-        if !lookup.is_empty() || credentials.is_some() {
-            tracing::debug!("{S} User-password authentication is enabled.");
+        if !lookup.is_empty() || credentials.is_some() || dynamic {
+            if dynamic && lookup.is_empty() && credentials.is_none() {
+                tracing::warn!(
+                    "{S} Dynamic usrpwd authentication enabled without dictionary. \
+                     All credentials will be accepted at transport layer unless gated by an external hook."
+                );
+            }
+            tracing::debug!("{S} User-password authentication is enabled (dynamic={dynamic}).");
             Ok(Some(Self {
                 lookup,
                 credentials,
+                dynamic,
             }))
         } else {
             Ok(None)
@@ -161,22 +175,29 @@ impl StateOpen {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct StateAccept {
     nonce: u64,
+    initiated: bool,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct UsrPwdId(pub Option<Vec<u8>>);
+pub(crate) struct UsrPwdId(pub Option<Vec<u8>>, pub Option<Vec<u8>>, pub Option<u64>);
 
 impl StateAccept {
     pub(crate) fn new<R>(prng: &mut R) -> Self
     where
         R: Rng + CryptoRng,
     {
-        Self { nonce: prng.gen() }
+        Self {
+            nonce: prng.gen(),
+            initiated: false,
+        }
     }
 
     #[cfg(all(test, feature = "test"))]
     pub(crate) fn rand() -> Self {
         let mut rng = rand::thread_rng();
-        Self::new(&mut rng)
+        Self {
+            nonce: rng.gen(),
+            initiated: rng.gen_bool(0.5),
+        }
     }
 }
 
@@ -188,7 +209,8 @@ where
     type Output = Result<(), DidntWrite>;
 
     fn write(self, writer: &mut W, x: &StateAccept) -> Self::Output {
-        self.write(&mut *writer, x.nonce)
+        self.write(&mut *writer, x.nonce)?;
+        self.write(&mut *writer, if x.initiated { 1u8 } else { 0u8 })
     }
 }
 
@@ -200,7 +222,11 @@ where
 
     fn read(self, reader: &mut R) -> Result<StateAccept, Self::Error> {
         let nonce: u64 = self.read(&mut *reader)?;
-        Ok(StateAccept { nonce })
+        let initiated: u8 = self.read(&mut *reader)?;
+        Ok(StateAccept {
+            nonce,
+            initiated: initiated != 0,
+        })
     }
 }
 
@@ -375,11 +401,16 @@ impl<'a> AcceptFsm for &'a AuthUsrPwdFsm<'a> {
     ) -> Result<Self::RecvInitSynOut, Self::Error> {
         const S: &str = "UsrPwd extension - Recv InitSyn.";
 
-        let (_, ext_usrpwd) = input;
+        let (state, ext_usrpwd) = input;
         if ext_usrpwd.is_none() {
+            if zasyncread!(self.inner).dynamic {
+                state.initiated = false;
+                return Ok(());
+            }
             bail!("{S} Expected extension.");
         }
 
+        state.initiated = true;
         Ok(())
     }
 
@@ -389,11 +420,14 @@ impl<'a> AcceptFsm for &'a AuthUsrPwdFsm<'a> {
         self,
         state: Self::SendInitAckIn,
     ) -> Result<Self::SendInitAckOut, Self::Error> {
+        if !state.initiated && zasyncread!(self.inner).dynamic {
+            return Ok(None);
+        }
         Ok(Some(ZExtZ64::new(state.nonce)))
     }
 
     type RecvOpenSynIn = (&'a mut StateAccept, Option<ext::OpenSyn>);
-    type RecvOpenSynOut = Vec<u8>; //value of userid is returned if recvopensynout is processed as valid
+    type RecvOpenSynOut = (Option<Vec<u8>>, Option<Vec<u8>>, Option<u64>); // username, hmac, nonce
     async fn recv_open_syn(
         self,
         input: Self::RecvOpenSynIn,
@@ -401,6 +435,14 @@ impl<'a> AcceptFsm for &'a AuthUsrPwdFsm<'a> {
         const S: &str = "UsrPwd extension - Recv OpenSyn.";
 
         let (state, mut ext_usrpwd) = input;
+        if !state.initiated {
+            if zasyncread!(self.inner).dynamic {
+                return Ok((None, None, None));
+            } else {
+                bail!("{S} Expected extension.");
+            }
+        }
+
         let ext_usrpwd = ext_usrpwd
             .take()
             .ok_or_else(|| zerror!("{S} Expected extension."))?;
@@ -412,27 +454,31 @@ impl<'a> AcceptFsm for &'a AuthUsrPwdFsm<'a> {
             .map_err(|_| zerror!("{S} Decoding error."))?;
 
         let r_inner = zasyncread!(self.inner);
-        let pwd = r_inner
-            .lookup
-            .get(&open_syn.user)
-            .ok_or_else(|| zerror!("{S} Invalid user."))?;
-
-        // Create the HMAC of the password using the nonce received as challenge
-        let key = state.nonce.to_le_bytes();
-        let hmac = hmac::sign(&key, pwd).map_err(|_| zerror!("{S} Encoding error."))?;
-        if hmac != open_syn.hmac {
-            bail!("{S} Invalid password.");
+        if let Some(pwd) = r_inner.lookup.get(&open_syn.user) {
+            let key = state.nonce.to_le_bytes();
+            let hmac = hmac::sign(&key, pwd).map_err(|_| zerror!("{S} Encoding error."))?;
+            if hmac != open_syn.hmac {
+                bail!("{S} Invalid password.");
+            }
+        } else if !r_inner.dynamic {
+            bail!("{S} Invalid user.");
         }
+
         let username = open_syn.user.to_owned();
-        Ok(username)
+        let hmac = open_syn.hmac.to_owned();
+        let nonce = state.nonce;
+        Ok((Some(username), Some(hmac), Some(nonce)))
     }
 
     type SendOpenAckIn = &'a StateAccept;
     type SendOpenAckOut = Option<ext::OpenAck>;
     async fn send_open_ack(
         self,
-        _input: Self::SendOpenAckIn,
+        state: Self::SendOpenAckIn,
     ) -> Result<Self::SendOpenAckOut, Self::Error> {
+        if !state.initiated && zasyncread!(self.inner).dynamic {
+            return Ok(None);
+        }
         Ok(Some(ZExtUnit::new()))
     }
 }
@@ -469,27 +515,27 @@ mod tests {
             let mut c = zconfig!();
             writeln!(c, "usr1:pwd1").unwrap();
             drop(c);
-            assert!(AuthUsrPwd::from_config(&config).await.unwrap().is_some());
+            assert!(AuthUsrPwd::from_config(&config, false).await.unwrap().is_some());
             // Invalid config
             let mut c = zconfig!();
             writeln!(c, "usr1").unwrap();
             drop(c);
-            assert!(AuthUsrPwd::from_config(&config).await.is_err());
+            assert!(AuthUsrPwd::from_config(&config, false).await.is_err());
             // Empty password
             let mut c = zconfig!();
             writeln!(c, "usr1:").unwrap();
             drop(c);
-            assert!(AuthUsrPwd::from_config(&config).await.is_err());
+            assert!(AuthUsrPwd::from_config(&config, false).await.is_err());
             // Empty user
             let mut c = zconfig!();
             writeln!(c, ":pwd1").unwrap();
             drop(c);
-            assert!(AuthUsrPwd::from_config(&config).await.is_err());
+            assert!(AuthUsrPwd::from_config(&config, false).await.is_err());
             // Empty user and password
             let mut c = zconfig!();
             writeln!(c, ":").unwrap();
             drop(c);
-            assert!(AuthUsrPwd::from_config(&config).await.is_err());
+            assert!(AuthUsrPwd::from_config(&config, false).await.is_err());
 
             let _ = std::fs::remove_file(f1);
         }

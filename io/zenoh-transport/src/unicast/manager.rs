@@ -597,7 +597,7 @@ impl TransportManager {
         link: LinkUnicastWithOpenAck,
         other_initial_sn: TransportSn,
         other_lease: Duration,
-        mut guard: AsyncMutexGuard<'_, HashMap<ZenohIdProto, Arc<dyn TransportUnicastTrait>>>,
+        guard: AsyncMutexGuard<'_, HashMap<ZenohIdProto, Arc<dyn TransportUnicastTrait>>>,
     ) -> InitTransportResult {
         macro_rules! link_error {
             ($s:expr, $reason:expr) => {
@@ -727,21 +727,33 @@ impl TransportManager {
             };
         }
 
+        // Drop guard early to prevent deadlocks when callbacks query active transports (e.g. north_bound_transport_peer_count)
+        drop(guard);
+
+        // Notify manager's interface that there is a new transport BEFORE sending OpenAck.
+        // If the transport is rejected (e.g. auth_on_register denied), send Close and abort
+        // without ever sending OpenAck, so the client receives a handshake error and backs off.
+        if let Err(e) = self.notify_new_transport_unicast(&t) {
+            let _ = ack.send_close(close::reason::INVALID).await;
+            let _ = t.close(close::reason::INVALID).await;
+            return Err(InitTransportError::Transport((
+                e,
+                t.clone(),
+                close::reason::INVALID,
+            )));
+        }
+
         // Complete establish procedure
         let c_link = ack.link();
         transport_error!(ack.send_open_ack().await, close::reason::GENERIC);
 
         // Add the transport transport to the list of active transports
-        guard.insert(config.zid, t.clone());
-        drop(guard);
+        {
+            let mut guard = zasynclock!(self.state.unicast.transports);
+            guard.insert(config.zid, t.clone());
+        }
 
         start_tx();
-
-        // Notify manager's interface that there is a new transport
-        transport_error!(
-            self.notify_new_transport_unicast(&t),
-            close::reason::GENERIC
-        );
 
         // Notify transport's callback interface that there is a new link
         transport_error!(

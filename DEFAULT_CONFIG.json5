@@ -502,6 +502,20 @@
   //   ]
   // },
 
+  // /// Configure external gRPC authentication hook (auth_on_register, auth_on_subscribe, auth_on_publish)
+  // grpc_hook: {
+  //   /// [true/false] gRPC hook will be activated only if this is set to true
+  //   enabled: false,
+  //   /// gRPC hook server address
+  //   endpoint: "http://127.0.0.1:50051",
+  //   /// Timeout for gRPC hook calls in milliseconds (default: 500)
+  //   timeout_ms: 500,
+  //   /// [true/false] Whether to allow actions if the gRPC hook server fails or times out (default: false)
+  //   fail_open: false,
+  //   /// Maximum payload bytes forwarded to auth_on_publish (default: 65536). Set to 0 to disable payload forwarding.
+  //   max_payload_bytes: 65536,
+  // },
+
   // low_pass_filter: [
   //   {
   //     /// Optional Id, has to be unique
@@ -780,6 +794,8 @@
         password: null,
         /// The path to a file containing the user password dictionary
         dictionary_file: null,
+        /// Whether to dynamically delegate authentication to interceptors/hooks without dictionary_file
+        dynamic: false,
       },
       pubkey: {
         public_key_pem: null,

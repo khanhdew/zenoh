@@ -87,12 +87,12 @@ impl InterceptorFactoryTrait for DownsamplingInterceptorFactory {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
         if let Some(interfaces) = &self.interfaces {
             if let Ok(links) = transport.get_links() {
                 for link in links {
                     if !link.interfaces.iter().any(|x| interfaces.contains(x)) {
-                        return (None, None);
+                        return Ok((None, None));
                     }
                 }
             }
@@ -106,12 +106,12 @@ impl InterceptorFactoryTrait for DownsamplingInterceptorFactory {
                         .map(|auth_id| InterceptorLinkWrapper::from(auth_id).0)
                         .any(|v| config_protocols.contains(&v))
                     {
-                        return (None, None);
+                        return Ok((None, None));
                     }
                 }
                 Err(e) => {
                     tracing::error!("Error loading transport AuthIds: {e}");
-                    return (None, None);
+                    return Ok((None, None));
                 }
             }
         }
@@ -122,7 +122,7 @@ impl InterceptorFactoryTrait for DownsamplingInterceptorFactory {
             .map(|stats| stats.drop_stats(zenoh_stats::ReasonLabel::Downsampling))
         else {
             // `get_stats` returning an error means the transport is closed
-            return (None, None);
+            return Ok((None, None));
         };
         let interceptor = |flow| {
             let direction = match flow {
@@ -138,14 +138,14 @@ impl InterceptorFactoryTrait for DownsamplingInterceptorFactory {
                 stats.clone(),
             )) as Interceptor
         };
-        (
+        Ok((
             self.flows
                 .ingress
                 .then(|| interceptor(InterceptorFlow::Ingress)),
             self.flows
                 .egress
                 .then(|| interceptor(InterceptorFlow::Egress)),
-        )
+        ))
     }
 
     fn new_transport_multicast(

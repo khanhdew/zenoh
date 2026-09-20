@@ -382,6 +382,27 @@ impl MaybeOpenAck {
         Ok(())
     }
 
+    pub(crate) async fn send_close(mut self, reason: u8) -> ZResult<()> {
+        let msg: TransportMessage = Close {
+            reason,
+            session: false,
+        }
+        .into();
+        zcondfeat!(
+            "transport_compression",
+            {
+                let compression = self.link.inner.config.batch.is_compression;
+                self.link.inner.config.batch.is_compression = false;
+                let _ = self.link.send(&msg, None).await;
+                self.link.inner.config.batch.is_compression = compression;
+            },
+            {
+                let _ = self.link.send(&msg, None).await;
+            }
+        );
+        self.link.inner.link.close().await
+    }
+
     pub(crate) fn link(&self) -> Link {
         self.link.inner.link()
     }

@@ -53,15 +53,15 @@ impl InterceptorFactoryTrait for TestInterceptorFactory {
     fn new_transport_unicast(
         &self,
         _transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
-        match self.conf.flow {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
+        Ok(match self.conf.flow {
             InterceptorFlow::Egress => {
                 (None, Some(Box::new(TestInterceptor::new(&self.conf.data))))
             }
             InterceptorFlow::Ingress => {
                 (Some(Box::new(TestInterceptor::new(&self.conf.data))), None)
             }
-        }
+        })
     }
 
     fn new_transport_multicast(

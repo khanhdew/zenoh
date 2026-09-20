@@ -107,11 +107,11 @@ impl InterceptorFactoryTrait for QosOverwriteFactory {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
         if let Some(zids) = &self.zids {
             if let Ok(zid) = transport.get_zid() {
                 if !zids.contains(&zid.into()) {
-                    return (None, None);
+                    return Ok((None, None));
                 }
             }
         }
@@ -119,7 +119,7 @@ impl InterceptorFactoryTrait for QosOverwriteFactory {
             if let Ok(links) = transport.get_links() {
                 for link in links {
                     if !link.interfaces.iter().any(|x| interfaces.contains(x)) {
-                        return (None, None);
+                        return Ok((None, None));
                     }
                 }
             }
@@ -133,12 +133,12 @@ impl InterceptorFactoryTrait for QosOverwriteFactory {
                         .map(|auth_id| InterceptorLinkWrapper::from(auth_id).0)
                         .any(|v| config_protocols.contains(&v))
                     {
-                        return (None, None);
+                        return Ok((None, None));
                     }
                 }
                 Err(e) => {
                     tracing::error!("Error loading transport AuthIds: {e}");
-                    return (None, None);
+                    return Ok((None, None));
                 }
             }
         };
@@ -157,7 +157,7 @@ impl InterceptorFactoryTrait for QosOverwriteFactory {
             },
             transport
         );
-        (
+        Ok((
             self.flows.ingress.then(|| {
                 Box::new(QosInterceptor {
                     filter: self.filter.clone(),
@@ -172,7 +172,7 @@ impl InterceptorFactoryTrait for QosOverwriteFactory {
                     overwrite: self.overwrite.clone(),
                 }) as EgressInterceptor
             }),
-        )
+        ))
     }
 
     fn new_transport_multicast(

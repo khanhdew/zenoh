@@ -1146,8 +1146,7 @@ impl TransportEventHandler for RuntimeTransportEventHandler {
                     main_handler: runtime
                         .state
                         .router
-                        .new_transport_unicast(transport, region, remote_bound)
-                        .unwrap(),
+                        .new_transport_unicast(transport, region, remote_bound)?,
                     slave_handlers,
                 }))
             }

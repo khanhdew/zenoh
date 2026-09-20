@@ -721,12 +721,12 @@ impl InterceptorFactoryTrait for AclEnforcer {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
         let auth_ids = match transport.get_auth_ids() {
             Ok(auth_ids) => auth_ids,
             Err(err) => {
                 tracing::error!("Couldn't get Transport Auth IDs: {}", err);
-                return (None, None);
+                return Ok((None, None));
             }
         };
 
@@ -755,7 +755,7 @@ impl InterceptorFactoryTrait for AclEnforcer {
             Ok(links) => links,
             Err(err) => {
                 tracing::error!("Couldn't get Transport links: {}", err);
-                return (None, None);
+                return Ok((None, None));
             }
         };
         let mut interfaces = links
@@ -801,7 +801,7 @@ impl InterceptorFactoryTrait for AclEnforcer {
             Ok(zid) => zid,
             Err(err) => {
                 tracing::error!("Couldn't get Transport zid: {}", err);
-                return (None, None);
+                return Ok((None, None));
             }
         };
         // FIXME: Investigate if `AuthSubject` can have duplicates above and try to avoid this conversion
@@ -818,7 +818,7 @@ impl InterceptorFactoryTrait for AclEnforcer {
             .map(|stats| stats.drop_stats(zenoh_stats::ReasonLabel::AccessControl))
         else {
             // `get_stats` returning an error means the transport is closed
-            return (None, None);
+            return Ok((None, None));
         };
         let ingress_interceptor = Box::new(IngressAclEnforcer {
             policy_enforcer: self.enforcer.clone(),
@@ -834,7 +834,7 @@ impl InterceptorFactoryTrait for AclEnforcer {
             #[cfg(feature = "stats")]
             stats: stats.clone(),
         });
-        (
+        Ok((
             self.enforcer
                 .interface_enabled
                 .ingress
@@ -843,7 +843,7 @@ impl InterceptorFactoryTrait for AclEnforcer {
                 .interface_enabled
                 .egress
                 .then_some(egress_interceptor),
-        )
+        ))
     }
 
     fn new_transport_multicast(

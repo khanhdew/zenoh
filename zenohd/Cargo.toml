@@ -28,6 +28,7 @@ version = { workspace = true }
 [features]
 default = ["zenoh/default"]
 shared-memory = ["zenoh/shared-memory"]
+grpc_hook = ["zenoh/grpc_hook"]
 
 [dependencies]
 clap = { workspace = true, features = ["derive"] }

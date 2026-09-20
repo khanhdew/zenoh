@@ -217,6 +217,11 @@ extern crate zenoh_result;
 mod api;
 mod net;
 
+#[cfg(feature = "grpc_hook")]
+pub mod grpc_hook {
+    pub use crate::net::routing::interceptor::grpc_hook::*;
+}
+
 #[cfg(feature = "internal")]
 pub use api::admin::KE_ADV_PREFIX;
 #[cfg(feature = "internal")]

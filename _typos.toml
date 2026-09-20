@@ -14,3 +14,5 @@ closee = "closee"         # closee
 controllen = "controllen" # From libc
 mis = "mis"               # mismatch
 thr = "thr"               # throughput
+Mosquitto = "Mosquitto"
+mosquitto = "mosquitto"

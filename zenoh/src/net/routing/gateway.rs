@@ -311,10 +311,13 @@ impl Gateway {
             })
             .clone();
 
-        newface.set_interceptors_from_factories(
+        if let Err(e) = newface.set_interceptors_from_factories(
             &tables.data.interceptors,
             tables.data.next_interceptor_version.load(Ordering::SeqCst),
-        );
+        ) {
+            tables.data.faces.remove(&fid);
+            return Err(e);
+        }
         tracing::debug!("New {}", newface);
 
         let mut face = Face {
@@ -390,7 +393,7 @@ impl Gateway {
 
         let face = Arc::new(builder.build());
 
-        face.set_interceptors_from_factories(
+        let _ = face.set_interceptors_from_factories(
             &tables.data.interceptors,
             tables.data.next_interceptor_version.load(Ordering::SeqCst),
         );
@@ -446,7 +449,7 @@ impl Gateway {
 
         let face = Arc::new(builder.build());
 
-        face.set_interceptors_from_factories(
+        let _ = face.set_interceptors_from_factories(
             &tables.data.interceptors,
             tables.data.next_interceptor_version.load(Ordering::SeqCst),
         );

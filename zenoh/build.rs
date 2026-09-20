@@ -25,4 +25,13 @@ fn main() {
         // https://github.com/rust-lang/rust/issues/138696
         println!("cargo:rustc-cfg=nolocal_thread_not_available");
     }
+
+    // Compile the gRPC hook proto when the feature is enabled.
+    // Cargo sets CARGO_FEATURE_<UPPER_FEATURE_NAME> for each active feature.
+    if std::env::var("CARGO_FEATURE_GRPC_HOOK").is_ok() {
+        tonic_prost_build::configure()
+            .build_server(true)
+            .compile_protos(&["proto/zenoh_hook.proto"], &["proto"])
+            .expect("failed to compile zenoh_hook.proto");
+    }
 }

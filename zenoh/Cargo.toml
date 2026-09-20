@@ -83,6 +83,7 @@ unstable = [
   "zenoh-transport/unstable",
 ]
 uring = ["zenoh-transport/uring"]
+grpc_hook = ["tonic", "tonic-prost", "prost"]
 
 [dependencies]
 ahash = { workspace = true, default-features = true }
@@ -107,6 +108,9 @@ serde_json = { workspace = true }
 socket2 = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 tokio-util = { workspace = true }
+tonic = { workspace = true, optional = true }
+tonic-prost = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
 tracing = { workspace = true }
 uhlc = { workspace = true, features = ["default"] }
 vec_map = { workspace = true }
@@ -144,6 +148,7 @@ zenoh-test = { workspace = true, features = ["internal", "unstable"] }
 
 [build-dependencies]
 rustc_version = { workspace = true }
+tonic-prost-build = { workspace = true }
 
 [lib]
 name = "zenoh"

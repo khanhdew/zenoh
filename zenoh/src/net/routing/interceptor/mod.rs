@@ -53,6 +53,11 @@ use crate::{
 pub mod qos_overwrite;
 use crate::net::routing::interceptor::qos_overwrite::qos_overwrite_interceptor_factories;
 
+#[cfg(feature = "grpc_hook")]
+pub mod grpc_hook;
+#[cfg(feature = "grpc_hook")]
+use grpc_hook::grpc_hook_interceptor_factories;
+
 #[derive(Default, Debug)]
 pub struct InterfaceEnabled {
     pub ingress: bool,
@@ -120,7 +125,7 @@ pub(crate) trait InterceptorFactoryTrait {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>);
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)>;
     fn new_transport_multicast(&self, transport: &TransportMulticast) -> Option<EgressInterceptor>;
     fn new_peer_multicast(&self, transport: &TransportMulticast) -> Option<IngressInterceptor>;
 }
@@ -142,6 +147,8 @@ pub(crate) fn interceptor_factories(config: &Config) -> ZResult<Vec<InterceptorF
     res.extend(acl_interceptor_factories(config.access_control())?);
     res.extend(qos_overwrite_interceptor_factories(config.qos().network())?);
     res.extend(low_pass_interceptor_factories(config.low_pass_filter())?);
+    #[cfg(feature = "grpc_hook")]
+    res.extend(grpc_hook_interceptor_factories(config.grpc_hook())?);
     Ok(res)
 }
 
@@ -304,12 +311,12 @@ impl InterceptorFactoryTrait for LoggerInterceptor {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
         tracing::debug!("New transport unicast {:?}", transport);
-        (
+        Ok((
             Some(Box::new(IngressMsgLogger {})),
             Some(Box::new(EgressMsgLogger {})),
-        )
+        ))
     }
 
     fn new_transport_multicast(&self, transport: &TransportMulticast) -> Option<EgressInterceptor> {

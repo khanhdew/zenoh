@@ -75,12 +75,24 @@ impl Compatibility {
         }
 
         if self.rust_version != other.rust_version {
-            bail!(
-                "Incompatible rustc versions:\n host: {}\n plugin: {}",
-                self.rust_version,
-                other.rust_version
-            )
-        } else if !version_equals(&self.zenoh_version, &other.zenoh_version) {
+            if std::env::var("ZENOH_PLUGIN_IGNORE_RUSTC_VERSION")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
+            {
+                tracing::warn!(
+                    "Incompatible rustc versions (ignored via ZENOH_PLUGIN_IGNORE_RUSTC_VERSION):\n host: {}\n plugin: {}",
+                    self.rust_version,
+                    other.rust_version
+                );
+            } else {
+                bail!(
+                    "Incompatible rustc versions:\n host: {}\n plugin: {}",
+                    self.rust_version,
+                    other.rust_version
+                );
+            }
+        }
+        if !version_equals(&self.zenoh_version, &other.zenoh_version) {
             bail!(
                 "Incompatible Zenoh versions:\n host: {}\n plugin: {}",
                 self.zenoh_version,

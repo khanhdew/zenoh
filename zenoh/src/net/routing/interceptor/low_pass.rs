@@ -142,20 +142,20 @@ impl InterceptorFactoryTrait for LowPassInterceptorFactory {
     fn new_transport_unicast(
         &self,
         transport: &TransportUnicast,
-    ) -> (Option<IngressInterceptor>, Option<EgressInterceptor>) {
+    ) -> ZResult<(Option<IngressInterceptor>, Option<EgressInterceptor>)> {
         tracing::debug!("New low-pass filter transport unicast {:?}", transport);
         let links = match transport.get_links() {
             Ok(links) => links,
             Err(e) => {
                 tracing::error!("Unable to get links from transport {:?}: {e}", transport);
-                return (None, None);
+                return Ok((None, None));
             }
         };
         let auth_ids = match transport.get_auth_ids() {
             Ok(auth_ids) => auth_ids,
             Err(e) => {
                 tracing::error!("Unable to get auth_ids for transport {:?}: {e}", transport);
-                return (None, None);
+                return Ok((None, None));
             }
         };
 
@@ -188,9 +188,9 @@ impl InterceptorFactoryTrait for LowPassInterceptorFactory {
                 .map(|stats| stats.drop_stats(zenoh_stats::ReasonLabel::LowPass))
             else {
                 // `get_stats` returning an error means the transport is closed
-                return (None, None);
+                return Ok((None, None));
             };
-            return (
+            return Ok((
                 self.state.interface_enabled.ingress.then(|| {
                     Box::new(LowPassInterceptor::new(
                         self.state.clone(),
@@ -209,9 +209,9 @@ impl InterceptorFactoryTrait for LowPassInterceptorFactory {
                         stats.clone(),
                     )) as EgressInterceptor
                 }),
-            );
+            ));
         }
-        (None, None)
+        Ok((None, None))
     }
 
     fn new_transport_multicast(

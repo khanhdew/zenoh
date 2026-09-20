@@ -59,12 +59,14 @@ pub struct Auth {
 impl Auth {
     pub(crate) async fn from_config(config: &Config) -> ZResult<Self> {
         let auth = config.transport().auth();
+        #[cfg(feature = "auth_usrpwd")]
+        let dynamic = config.grpc_hook().enabled || auth.usrpwd().dynamic.unwrap_or(false);
 
         Ok(Self {
             #[cfg(feature = "auth_pubkey")]
             pubkey: AuthPubKey::from_config(auth.pubkey())?.map(RwLock::new),
             #[cfg(feature = "auth_usrpwd")]
-            usrpwd: AuthUsrPwd::from_config(auth.usrpwd())
+            usrpwd: AuthUsrPwd::from_config(auth.usrpwd(), dynamic)
                 .await?
                 .map(RwLock::new),
         })
@@ -614,11 +616,11 @@ impl<'a> AcceptFsm for &'a AuthFsm<'a> {
             match (self.usrpwd.as_ref(), state.usrpwd.as_mut()) {
                 (Some(e), Some(s)) => {
                     let x = ztake!(exts, id::USRPWD);
-                    let username = e.recv_open_syn((s, ztryinto!(x, S))).await?;
-                    auth_id = UsrPwdId(Some(username));
+                    let (username, hmac, nonce) = e.recv_open_syn((s, ztryinto!(x, S))).await?;
+                    auth_id = UsrPwdId(username, hmac, nonce);
                 }
                 (None, None) => {
-                    auth_id = UsrPwdId(None);
+                    auth_id = UsrPwdId(None, None, None);
                 }
                 _ => bail!("{S} Invalid UsrPwd configuration."),
             }

@@ -1,0 +1,101 @@
+// Copyright (c) 2024 ZettaScale Technology
+//
+// SPDX-License-Identifier: EPL-2.0 OR Apache-2.0
+
+syntax = "proto3";
+
+package zenoh_hook;
+
+// ─── Request/Response messages ───────────────────────────────────────────────
+
+// Called when a new transport (peer/router/client) connects.
+message AuthOnRegisterRequest {
+    // Hex-encoded ZenohId of the connecting peer.
+    string peer_id        = 1;
+    // TLS certificate common name, empty if not using TLS.
+    string cert_cn        = 2;
+    // Login username (from auth_usrpwd), empty if not configured.
+    string username       = 3;
+    // Transport link protocol (tcp, tls, quic, etc.).
+    string link_protocol  = 4;
+    // Network interface name.
+    string interface      = 5;
+    // The HMAC challenge signature sent by the client (empty if usrpwd not used).
+    // Zenoh computes this using HMAC-SHA3-256 with the 64-bit challenge nonce in
+    // little-endian byte order (`nonce.to_le_bytes()`) as the secret key, and the
+    // UTF-8 password string bytes as the data.
+    bytes hmac            = 6;
+    // The random 64-bit challenge nonce sent to the client.
+    uint64 nonce          = 7;
+}
+
+message AuthOnRegisterResponse {
+    // Allow or deny the connection.
+    bool allow = 1;
+    // Human-readable reason for denial (optional).
+    string reason = 2;
+}
+
+// Called when a peer declares a subscriber or queryable.
+message AuthOnSubscribeRequest {
+    string peer_id       = 1;
+    string username      = 2;
+    // The key expression being subscribed to.
+    string key_expr      = 3;
+    // "subscriber" | "queryable" | "liveliness_subscriber"
+    string kind          = 4;
+    string cert_cn       = 5;
+    string link_protocol = 6;
+    string interface     = 7;
+    // "reliable" | "best_effort"
+    string reliability   = 8;
+    // Whether subscriber requested historical cache / query replay
+    bool   history       = 9;
+}
+
+message AuthOnSubscribeResponse {
+    bool allow  = 1;
+    string reason = 2;
+    // If set, the interceptor rewrites the key expression on subscribe.
+    optional string rewritten_key_expr = 3;
+}
+
+// Called when a peer publishes (Put / Delete / Query).
+message AuthOnPublishRequest {
+    string peer_id            = 1;
+    string username           = 2;
+    // The key expression being published to.
+    string key_expr           = 3;
+    // "put" | "delete" | "query" | "reply"
+    // Note: Internal liveliness tokens and @/** admin key expressions are filtered
+    // before reaching the interceptor.
+    string action             = 4;
+    string cert_cn            = 5;
+    string link_protocol      = 6;
+    string interface          = 7;
+    // Payload bytes (present on Put).
+    bytes  payload            = 8;
+    // "block" | "drop"
+    string congestion_control = 9;
+    // "control" | "real_time" | "interactive_high" | "interactive_low" | "data_high" | "data" | "data_low" | "background"
+    string priority           = 10;
+    // Raw query parameters string (when action == "query")
+    string query_parameters   = 11;
+    // "best_matching" | "all" | "all_complete" (when action == "query")
+    string query_target       = 12;
+}
+
+message AuthOnPublishResponse {
+    bool allow  = 1;
+    string reason = 2;
+    // If set, the interceptor rewrites the key expression on publish/query.
+    optional string rewritten_key_expr = 3;
+}
+
+// ─── Service definition ───────────────────────────────────────────────────────
+
+service ZenohHook {
+    rpc AuthOnRegister  (AuthOnRegisterRequest)  returns (AuthOnRegisterResponse);
+    rpc AuthOnSubscribe (AuthOnSubscribeRequest) returns (AuthOnSubscribeResponse);
+    rpc AuthOnPublish   (AuthOnPublishRequest)   returns (AuthOnPublishResponse);
+}

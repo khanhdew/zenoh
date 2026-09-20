@@ -22,6 +22,8 @@ pub struct TransportAuthId {
     username: Option<String>,
     zid: ZenohIdProto,
     link_auth_ids: Vec<LinkAuthId>,
+    usrpwd_hmac: Option<Vec<u8>>,
+    usrpwd_nonce: Option<u64>,
 }
 
 impl TransportAuthId {
@@ -30,6 +32,8 @@ impl TransportAuthId {
             username: None,
             zid,
             link_auth_ids: vec![],
+            usrpwd_hmac: None,
+            usrpwd_nonce: None,
         }
     }
 
@@ -46,7 +50,9 @@ impl TransportAuthId {
             }
         } else {
             None
-        }
+        };
+        self.usrpwd_hmac = user_pwd_id.1.clone();
+        self.usrpwd_nonce = user_pwd_id.2;
     }
 
     pub(crate) fn push_link_auth_id(&mut self, link_auth_id: LinkAuthId) {
@@ -55,6 +61,14 @@ impl TransportAuthId {
 
     pub fn username(&self) -> Option<&String> {
         self.username.as_ref()
+    }
+
+    pub fn usrpwd_hmac(&self) -> Option<&[u8]> {
+        self.usrpwd_hmac.as_deref()
+    }
+
+    pub fn usrpwd_nonce(&self) -> Option<u64> {
+        self.usrpwd_nonce
     }
 
     pub fn link_auth_ids(&self) -> &Vec<LinkAuthId> {

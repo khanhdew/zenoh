@@ -24,6 +24,7 @@ use itertools::Itertools;
 use tokio_util::sync::CancellationToken;
 use zenoh_collections::IntHashMap;
 use zenoh_keyexpr::keyexpr;
+use zenoh_result::ZResult;
 use zenoh_protocol::{
     core::{Bound, ExprId, Region, Reliability, WhatAmI, WireExpr, ZenohIdProto},
     network::{
@@ -303,15 +304,22 @@ impl FaceState {
         &self,
         factories: &[InterceptorFactory],
         version: usize,
-    ) {
+    ) -> ZResult<()> {
         if let Some(mux) = self.primitives.as_any().downcast_ref::<Mux>() {
-            let (ingress, egress): (Vec<_>, Vec<_>) = factories
-                .iter()
-                .map(|itor| itor.new_transport_unicast(&mux.handler))
-                .unzip();
+            let mut ingress = Vec::new();
+            let mut egress = Vec::new();
+            for itor in factories {
+                let (i, e) = itor.new_transport_unicast(&mux.handler)?;
+                if let Some(i) = i {
+                    ingress.push(i);
+                }
+                if let Some(e) = e {
+                    egress.push(e);
+                }
+            }
             let (ingress, egress) = (
-                InterceptorsChain::new(ingress.into_iter().flatten().collect::<Vec<_>>(), version),
-                InterceptorsChain::new(egress.into_iter().flatten().collect::<Vec<_>>(), version),
+                InterceptorsChain::new(ingress, version),
+                InterceptorsChain::new(egress, version),
             );
             mux.interceptor
                 .store((!egress.is_empty()).then(|| egress.into()));
@@ -342,6 +350,7 @@ impl FaceState {
                 .expect("face in_interceptors should not be None when mcast_group is set")
                 .store(interceptor.into());
         }
+        Ok(())
     }
 }
 

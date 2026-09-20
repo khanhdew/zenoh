@@ -163,6 +163,50 @@ pub struct LowPassFilterConf {
     pub size_limit: usize,
 }
 
+/// Configuration for the external gRPC auth-hook server.
+///
+/// The hook server implements the `ZenohHook` service defined in `proto/zenoh_hook.proto`
+/// and is called for `auth_on_register`, `auth_on_subscribe`, and `auth_on_publish`.
+#[derive(Serialize, Debug, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct GrpcHookConfig {
+    /// Whether the gRPC hook is enabled.
+    pub enabled: bool,
+    /// gRPC endpoint of the hook server, e.g. "http://127.0.0.1:50051"
+    pub endpoint: String,
+    /// Timeout for each gRPC call in milliseconds. Default: 500 ms.
+    #[serde(default = "GrpcHookConfig::default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// If true, allow traffic when the hook server is unreachable.
+    /// If false (default), deny traffic when the hook server is unreachable.
+    #[serde(default)]
+    pub fail_open: bool,
+    /// Maximum payload bytes forwarded to auth_on_publish. Default: 65536 (64 KB). Set to 0 to disable payload forwarding.
+    #[serde(default = "GrpcHookConfig::default_max_payload_bytes")]
+    pub max_payload_bytes: usize,
+}
+
+impl GrpcHookConfig {
+    fn default_timeout_ms() -> u64 {
+        500
+    }
+    fn default_max_payload_bytes() -> usize {
+        65536
+    }
+}
+
+impl Default for GrpcHookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint: String::new(),
+            timeout_ms: Self::default_timeout_ms(),
+            fail_open: false,
+            max_payload_bytes: Self::default_max_payload_bytes(),
+        }
+    }
+}
+
 #[derive(Serialize, Debug, Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct AclConfigRule {
@@ -857,6 +901,8 @@ validated_struct::validator! {
                     password: Option<String>,
                     /// The path to a file containing the user password dictionary, a file containing `<user>:<password>`
                     dictionary_file: Option<String>,
+                    /// Whether to dynamically delegate authentication to interceptors/hooks (no dictionary_file needed)
+                    pub dynamic: Option<bool>,
                 } where (user_conf_validator),
                 pub pubkey: #[derive(Default)]
                 PubKeyConf {
@@ -915,6 +961,11 @@ validated_struct::validator! {
             pub subjects: Option<Vec<AclConfigSubjects>>,
             pub policies: Option<Vec<AclConfigPolicyEntry>>,
         },
+
+        /// Configuration of the gRPC auth hook.
+        /// When enabled, the router calls an external gRPC server for
+        /// auth_on_register, auth_on_subscribe, and auth_on_publish decisions.
+        pub grpc_hook: GrpcHookConfig,
 
         /// Configuration of the low-pass filter
         pub low_pass_filter: Vec<LowPassFilterConf>,

@@ -37,3 +37,5 @@ ci/valgrind-check/*.log
 **/fuzz/artifacts
 **/fuzz/corpus
 **/fuzz/coverage
+
+.codegraph

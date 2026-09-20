@@ -541,7 +541,7 @@ impl TablesLock {
             .next_interceptor_version
             .fetch_add(1, Ordering::SeqCst);
         tables.data.faces.values().for_each(|face| {
-            face.set_interceptors_from_factories(&tables.data.interceptors, version + 1);
+            let _ = face.set_interceptors_from_factories(&tables.data.interceptors, version + 1);
         });
         Ok(())
     }
